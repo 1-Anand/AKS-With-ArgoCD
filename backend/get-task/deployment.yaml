@@ -1,0 +1,26 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: get-deployment
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: get
+  template:
+    metadata:
+      labels:
+        app: get
+    spec:
+      containers:
+      - name: get
+        image: 1anand1/get-tasks
+        ports:
+        - containerPort: 8000
+        env:
+        - name: CONNECTION_STRING
+          # value: "Driver={ODBC Driver 17 for SQL Server};Server=tcp:hulk777.database.windows.net,1433;Database=database;Uid=hulk77;Pwd=Hulk@0000007777;Encrypt=yes;TrustServerCertificate=no;Connection Timeout=30;"
+          valueFrom:
+            secretKeyRef:
+              key: CONNECTION_STRING
+              name: todosecret

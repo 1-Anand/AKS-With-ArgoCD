@@ -1,0 +1,19 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: get-ingress
+  labels:
+    app: get
+spec:
+  ingressClassName: azure-application-gateway
+  rules:
+  - host: get.bhushan.tech
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: get-svc
+            port:
+              number: 80

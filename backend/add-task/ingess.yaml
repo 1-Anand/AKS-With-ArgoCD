@@ -1,0 +1,19 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: add-ingress
+  labels:
+    app: get
+spec:
+  ingressClassName: azure-application-gateway
+  rules:
+  - host: add.bhushan.tech
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: add-svc
+            port:
+              number: 8000

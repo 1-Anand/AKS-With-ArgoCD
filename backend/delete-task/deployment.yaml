@@ -1,0 +1,26 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: delete-deployment
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: delete
+  template:
+    metadata:
+      labels:
+        app: delete
+    spec:
+      containers:
+      - name: delete
+        image: 1anand1/delete-task
+        ports:
+        - containerPort: 8000
+        env:
+        - name: CONNECTION_STRING
+          # value: "Driver={ODBC Driver 17 for SQL Server};Server=tcp:hulk777.database.windows.net,1433;Database=database;Uid=hulk77;Pwd=00000;Encrypt=yes;TrustServerCertificate=no;Connection Timeout=30;"
+          valueFrom:
+            secretKeyRef:
+              key: CONNECTION_STRING
+              name: todosecret
