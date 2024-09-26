@@ -1,3 +1,4 @@
+# Deployment Manifest
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -24,3 +25,39 @@ spec:
             secretKeyRef:
               key: CONNECTION_STRING
               name: todosecret
+
+---
+# Ingress manifests
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: add-ingress
+  labels:
+    app: get
+spec:
+  ingressClassName: azure-application-gateway
+  rules:
+  - host: add.bhushan.tech
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: add-svc
+            port:
+              number: 8000
+
+
+---
+# Service manifest
+apiVersion: v1
+kind: Service
+metadata:
+  name: add-svc
+spec:
+  selector:
+    app: add
+  ports:
+    - port: 80
+      targetPort: 8000
