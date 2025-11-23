@@ -1,39 +1,118 @@
-# Deployment Manifest
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: todo
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: add-sa
+  namespace: todo
+
+---
+# Production-ready Deployment for `add` backend
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: add-deployment
+  namespace: todo
+  labels:
+    app: add
+    component: backend
 spec:
   replicas: 3
   selector:
     matchLabels:
       app: add
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
   template:
     metadata:
       labels:
         app: add
+        component: backend
     spec:
+      serviceAccountName: add-sa
       containers:
       - name: addcn
-        image: 1anand1/add-task
+        image: 1anand1/add-task:stable
+        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8000
+          name: http
         env:
+        - name: ENVIRONMENT
+          value: "production"
         - name: CONNECTION_STRING
-          # value: "Driver={ODBC Driver 17 for SQL Server};Server=tcp:hulk777.database.windows.net,1433;Database=database;Uid=hulk77;Pwd=Hulk00000000000;Encrypt=yes;TrustServerCertificate=no;Connection Timeout=30;"
           valueFrom:
             secretKeyRef:
               key: CONNECTION_STRING
               name: todosecret
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: http
+          initialDelaySeconds: 30
+          periodSeconds: 20
+          timeoutSeconds: 3
+          failureThreshold: 5
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1000
 
 ---
-# Ingress manifests
+# ClusterIP Service for internal access
+apiVersion: v1
+kind: Service
+metadata:
+  name: add-svc
+  namespace: todo
+  labels:
+    app: add
+    component: backend
+spec:
+  type: ClusterIP
+  selector:
+    app: add
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8000
+
+---
+# Ingress for external access via Azure Application Gateway
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: add-ingress
+  namespace: todo
   labels:
-    app: get
+    app: add
+    component: backend
+  annotations:
+    kubernetes.io/ingress.class: "azure/application-gateway"
+    appgw.ingress.kubernetes.io/backend-protocol: "http"
+    appgw.ingress.kubernetes.io/ssl-redirect: "true"
 spec:
   ingressClassName: azure-application-gateway
   rules:
@@ -46,18 +125,40 @@ spec:
           service:
             name: add-svc
             port:
-              number: 8000
-
+              number: 80
 
 ---
-# Service manifest
-apiVersion: v1
-kind: Service
+# HorizontalPodAutoscaler
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
 metadata:
-  name: add-svc
+  name: add-hpa
+  namespace: todo
 spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: add-deployment
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 60
+
+---
+# PodDisruptionBudget
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: add-pdb
+  namespace: todo
+spec:
+  minAvailable: 2
   selector:
-    app: add
-  ports:
-    - port: 80
-      targetPort: 8000
+    matchLabels:
+      app: add
+      component: backend

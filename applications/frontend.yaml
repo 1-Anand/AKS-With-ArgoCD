@@ -1,40 +1,117 @@
-# Deployment Manifest
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: todo
 
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: frontend-sa
+  namespace: todo
+
+---
+# Production-ready Deployment for `frontend`
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: frontend-deployment
+  namespace: todo
+  labels:
+    app: frontend
+    component: frontend
 spec:
   replicas: 3
   selector:
     matchLabels:
       app: frontend
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
   template:
     metadata:
       labels:
         app: frontend
+        component: frontend
     spec:
+      serviceAccountName: frontend-sa
       containers:
       - name: frontend
-        image: 1anand1/frontend23
+        image: 1anand1/frontend23:stable
+        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8000
+          name: http
         env:
+        - name: ENVIRONMENT
+          value: "production"
         - name: CONNECTION_STRING
-          # value: "Driver={ODBC Driver 17 for SQL Server};Server=tcp:hulk777.database.windows.net,1433;Database=database;Uid=hulk77;Pwd=H000000000000000000;Encrypt=yes;TrustServerCertificate=no;Connection Timeout=30;"
           valueFrom:
             secretKeyRef:
               key: CONNECTION_STRING
               name: todosecret
----
-# Ingress manifests
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: http
+          initialDelaySeconds: 30
+          periodSeconds: 20
+          timeoutSeconds: 3
+          failureThreshold: 5
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1000
 
+---
+# Service manifest
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend-svc
+  namespace: todo
+  labels:
+    app: frontend
+    component: frontend
+spec:
+  type: ClusterIP
+  selector:
+    app: frontend
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8000
+
+---
+# Ingress manifest for frontend
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: frontend-ingress
+  namespace: todo
   labels:
     app: frontend
+    component: frontend
+  annotations:
+    kubernetes.io/ingress.class: "azure/application-gateway"
+    appgw.ingress.kubernetes.io/backend-protocol: "http"
+    appgw.ingress.kubernetes.io/ssl-redirect: "true"
 spec:
   ingressClassName: azure-application-gateway
   rules:
@@ -48,18 +125,41 @@ spec:
             name: frontend-svc
             port:
               number: 80
----
 
-# Service manifest
-apiVersion: v1
-kind: Service
+---
+# HorizontalPodAutoscaler for frontend
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
 metadata:
-  name: frontend-svc
+  name: frontend-hpa
+  namespace: todo
 spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: frontend-deployment
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 60
+
+---
+# PodDisruptionBudget for frontend
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: frontend-pdb
+  namespace: todo
+spec:
+  minAvailable: 2
   selector:
-    app: frontend
-  ports:
-    - port: 80
-      targetPort: 80
+    matchLabels:
+      app: frontend
+      component: frontend
 
 
